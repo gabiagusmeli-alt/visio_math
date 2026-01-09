@@ -2,64 +2,75 @@ import cv2
 import mediapipe as mp
 import pygame
 import threading
-import os
+import time
 
-# === CONFIGURACIÓN DE RUTAS ===
-base_path = os.path.dirname(os.path.abspath(__file__))
-parent_path = os.path.dirname(base_path)
+do = "recursos/do.wav"
+do_sos = "recursos/do_sostenido.wav"
+re = "recursos/re.wav"
+re_sos = "recursos/re_sostenido.wav"
+mi = "recursos/mi.wav"
+fa = "recursos/fa.wav"
+fa_sos = "recursos/fa_sostenido.wav"
+sol = "recursos/sol.wav"
+sol_so = "recursos/sol_sostenido.wav"
+la = "recursos/la.wav"
+la_sos = "recursos/la_sostenido.wav"
+si = "recursos/si.wav"
 
-fa = os.path.join(parent_path, "sources/fa.wav")
-la = os.path.join(parent_path, "sources/la.wav")
-la_sos = os.path.join(parent_path, "sources/la_sostenido.wav")
-re_sos = os.path.join(parent_path, "sources/re_sostenido.wav")
+sounds = [do, re , mi, fa ,sol, la, si, do]
+sounds_sos = [do_sos, re_sos, mi, fa_sos, sol_so, la_sos, si, do_sos]
 
-sonidos = [fa, la, la_sos, re_sos]
+def is_finger_down(landmarks, finger_tip, finger_base):
+    return landmarks[finger_tip].y > landmarks[finger_base].y
 
-# === FUNCIONES AUXILIARES ===
-def is_finger_down(landmarks, finger_tip, finger_mcp):
-    """Devuelve True si el dedo está bajado (tip más abajo que la base)."""
-    return landmarks[finger_tip].y > landmarks[finger_mcp].y
+def is_sos(landmarks, nodo_pulgar, referencia_pulgar, hand_label):
+    thumb_x = landmarks[nodo_pulgar].x
+    ref_x = landmarks[referencia_pulgar].x
+    if hand_label == "Right":
+        return thumb_x > ref_x
+    else:
+        return thumb_x < ref_x
 
-def play_sonido(indice):
-    """Reproduce un sonido en un hilo independiente."""
-    pygame.mixer.Sound(sonidos[indice]).play()
+def play_sonido(index, sos):
+    if sos:
+        pygame.mixer.Sound(sounds_sos[index]).play()
+        time.sleep(1)
+    else:
+        pygame.mixer.Sound(sounds[index]).play()
+        time.sleep(1)
 
-# === CONFIGURACIÓN DE MEDIAPIPE Y PYGAME ===
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 mp_hands = mp.solutions.hands
 
 pygame.mixer.init()
 
-# === INICIO DE CAPTURA DE CÁMARA ===
 cap = cv2.VideoCapture(0)
 
 with mp_hands.Hands(
     model_complexity=0,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5,
-    max_num_hands=2  # Máximo 2 manos
+    min_detection_confidence=0.8,
+    min_tracking_confidence=0.8,
+    max_num_hands=2
 ) as hands:
     
-    # Estado de cada dedo: 4 dedos por mano * 2 manos = 8 posibles dedos
-    finger_state = [False] * (2 * 4)
+    finger_state = [False] * 8
     
     while cap.isOpened():
         success, image = cap.read()
         if not success:
-            print("Ignorando frame vacío de la cámara.")
             continue
 
-        # Procesamiento de la imagen
         image.flags.writeable = False
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = hands.process(image)
         image.flags.writeable = True
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-        # Dibujo de manos y detección de dedos
-        if results.multi_hand_landmarks:
+        if results.multi_hand_landmarks and results.multi_handedness:
             for h, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                hand_label = results.multi_handedness[h].classification[0].label
+                
                 mp_drawing.draw_landmarks(
                     image,
                     hand_landmarks,
@@ -68,27 +79,42 @@ with mp_hands.Hands(
                     mp_drawing_styles.get_default_hand_connections_style()
                 )
 
-                finger_tips = [4, 8, 12, 16]   # Pulgar, índice, medio, anular
-                finger_mcp = [1, 5, 9, 13]
+                NODO_PULGAR = 4
+                REFERENCIA_PULGAR = 5
+                
+                fingers_map = []
+                
+                if hand_label == "Left":
+                    fingers_map = [
+                        (20, 0),
+                        (16, 1),
+                        (12, 2),
+                        (8, 3)
+                    ]
+                else:
+                    fingers_map = [
+                        (8, 4),
+                        (12, 5),
+                        (16, 6),
+                        (20, 7)
+                    ]
 
-                for i in range(4):  # 4 dedos
-                    finger_index = i + h * 4  # índice global del dedo
-                    if is_finger_down(hand_landmarks.landmark, finger_tips[i], finger_mcp[i]):
-                        if not finger_state[finger_index]:
-                            # Reproducir el sonido solo una vez cuando baja
-                            threading.Thread(target=play_sonido, args=(i,), daemon=True).start()
-                            finger_state[finger_index] = True
+                sos_active = is_sos(hand_landmarks.landmark, NODO_PULGAR, REFERENCIA_PULGAR, hand_label)
+
+                for tip_id, sound_index in fingers_map:
+                    if is_finger_down(hand_landmarks.landmark, tip_id, tip_id - 1):
+                        
+                        if not finger_state[sound_index]:
+                            threading.Thread(target=play_sonido, args=(sound_index, sos_active), daemon=True).start()
+                            finger_state[sound_index] = True
                     else:
-                        finger_state[finger_index] = False
+                        finger_state[sound_index] = False
 
-        # Mostrar imagen con efecto espejo
         cv2.imshow('MediaPipe Hands', cv2.flip(image, 1))
         
-        # Salir con tecla ESC
         if cv2.waitKey(5) & 0xFF == 27:
             break
 
-# === LIMPIEZA ===
 cap.release()
 cv2.destroyAllWindows()
 pygame.mixer.quit()
