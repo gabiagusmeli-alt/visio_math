@@ -33,8 +33,7 @@ El sistema utiliza **MediaPipe Hands** para mapear 21 puntos de referencia de la
 
 1.  **Clona este repositorio:**
     ```bash
-      [git clone [https://github.com/tu-usuario/handvision-piano.git](https://github.com/tu-usuario/handvision-piano.git)
-    cd handvision-piano](https://github.com/gabiagusmeli-alt/Computer_Vision_Piano.git)
+      https://github.com/gabiagusmeli-alt/Computer_Vision_Piano.git
     ```
 
 2.  **Instala las dependencias:**
